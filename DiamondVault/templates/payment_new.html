@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block title %}Payment for {{ auction.diamond.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-credit-card me-2"></i>
+                        Complete Payment
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ auction.diamond.name }}</h5>
+                    <p class="text-muted">Auction #{{ auction.id }}</p>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Current Price:</strong>
+                            <h3 class="text-success">₹{{ auction.diamond.current_price }}</h3>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Your Winning Bid:</strong>
+                            <h3 class="text-info">₹{{ auction.winning_bid|default:auction.diamond.base_price }}</h3>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="d-grid gap-3" style="grid-template-columns: 1fr 1fr;">
+                        <button id="pay-btn" class="btn btn-success btn-lg w-100">
+                            <i class="bi bi-lock-fill me-2"></i>
+                            Pay Now - ₹{{ auction.diamond.current_price }}
+                        </button>
+                        
+                        
+                    </div>
+
+                                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<script>
+var options = {
+    "key": "{{ razorpay_key }}",
+    "amount": "{{ payment.amount }}",
+    "currency": "INR",
+    "name": "DiamondVault",
+    "description": "Payment for {{ auction.diamond.name }}",
+    "order_id": "{{ payment.id }}",
+    "handler": function (response){
+        verifyPayment(response);
+    },
+    "modal": {
+        "ondismiss": function(){
+            console.log("Payment modal dismissed");
+        },
+        "escape": true,
+        "backdropclose": false,
+        "handleback": true,
+        "confirm_close": true
+    },
+    "prefill": {
+        "name": "{{ request.user.username }}",
+        "email": "{{ request.user.email|default:'user@example.com' }}",
+        "contact": "9999999999"
+    },
+    "theme": {
+        "color": "#007bff"
+    },
+    "config": {
+        "display": {
+            "blocks": {
+                "upi": {
+                    "name": "UPI",
+                    "instruments": [
+                        {
+                            "method": "upi"
+                        }
+                    ]
+                },
+                "card": {
+                    "name": "Credit/Debit Card",
+                    "instruments": [
+                        {
+                            "method": "card"
+                        }
+                    ]
+                },
+                "wallet": {
+                    "name": "Wallet",
+                    "instruments": [
+                        {
+                            "method": "wallet",
+                            "wallets": ["jio_money", "freecharge", "airtel_money", "payzapp"]
+                        }
+                    ]
+                },
+                "netbanking": {
+                    "name": "Net Banking",
+                    "instruments": [
+                        {
+                            "method": "netbanking",
+                            "banks": ["HDFC", "ICICI", "SBI", "PNB", "AXIS", "KOTAK"]
+                        }
+                    ]
+                }
+            },
+            "sequence": ["block.block_upi", "block.block_card", "block.block_wallet", "block.block_netbanking"],
+            "preferences": {
+                "show_default_blocks": true
+            }
+        }
+    }
+};
+
+var rzp = new Razorpay(options);
+
+document.getElementById('pay-btn').onclick = function(e){
+    rzp.open();
+    e.preventDefault();
+}
+
+// Function to verify payment with server
+function verifyPayment(response) {
+    fetch('/verify-payment/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+            auction_id: "{{ auction.id }}"
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert("Payment Successful!");
+            window.location.href = "/payment-success/{{ auction.id }}/";
+        } else {
+            alert("Payment failed: " + data.message);
+            window.location.href = "/payment-failure/{{ auction.id }}/";
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert("Payment verification failed. Please try again.");
+        window.location.href = "/payment-failure/{{ auction.id }}/";
+    });
+}
+
+// Function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Function to simulate payment for development testing
+function simulatePayment() {
+    if (confirm('This will create a test order without real payment. Continue?')) {
+        fetch('/simulate-payment/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                auction_id: "{{ auction.id }}"
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert("Test payment simulated successfully!");
+                window.location.href = "/payment-success/{{ auction.id }}/";
+            } else {
+                alert("Test payment failed: " + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert("Test payment failed. Please try again.");
+        });
+    }
+}
+</script>
+
+{% endblock %}
